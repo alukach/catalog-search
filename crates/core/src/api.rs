@@ -27,7 +27,7 @@ pub const CONFORMS_TO: &[&str] = &[
 const QUERYABLES_REL: &str = "http://www.opengis.net/def/rel/ogc/1.0/queryables";
 
 fn link(rel: &str, href: String) -> Value {
-    json!({"rel": rel, "type": "application/json", "href": href})
+    json!({"rel": rel, "type": "application/json", "title": rel, "href": href})
 }
 
 pub fn landing(base: &str) -> String {

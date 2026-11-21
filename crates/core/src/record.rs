@@ -228,9 +228,9 @@ fn extent(v: &Value) -> Option<Value> {
 
 fn links(v: &Value, id: &str) -> Value {
     let mut out = vec![
-        json!({"rel": "self", "type": "application/json", "href": format!("{BASE}/collections/{id}")}),
-        json!({"rel": "root", "type": "application/json", "href": format!("{BASE}/")}),
-        json!({"rel": "parent", "type": "application/json", "href": format!("{BASE}/collections")}),
+        json!({"rel": "self", "type": "application/json", "title": "Collection", "href": format!("{BASE}/collections/{id}")}),
+        json!({"rel": "root", "type": "application/json", "title": "Catalog root", "href": format!("{BASE}/")}),
+        json!({"rel": "parent", "type": "application/json", "title": "Collections", "href": format!("{BASE}/collections")}),
     ];
     for l in v.get("links").and_then(Value::as_array).into_iter().flatten() {
         match l.get("rel").and_then(Value::as_str) {
