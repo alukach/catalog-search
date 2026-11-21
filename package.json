@@ -1,0 +1,15 @@
+{
+  "name": "catalog-search",
+  "private": true,
+  "scripts": {
+    "index": "cargo run -q --release -p indexer -- --input catalog.jsonl --out out/load.sql",
+    "db:migrate": "wrangler d1 migrations apply DB --local --config crates/worker/wrangler.toml",
+    "db:load": "wrangler d1 execute DB --local --config crates/worker/wrangler.toml --file out/load.sql",
+    "dev": "wrangler dev --local --config crates/worker/wrangler.toml",
+    "test": "cargo test",
+    "e2e": "scripts/e2e.sh http://127.0.0.1:8787 catalog.jsonl"
+  },
+  "devDependencies": {
+    "wrangler": "^4.166.0"
+  }
+}

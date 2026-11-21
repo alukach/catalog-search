@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/indexer", "crates/worker"]
+# The worker only builds for wasm32 (via worker-build); keep plain `cargo test` native.
+default-members = ["crates/core", "crates/indexer"]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1

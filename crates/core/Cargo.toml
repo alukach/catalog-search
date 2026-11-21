@@ -1,0 +1,12 @@
+[package]
+name = "catalog-core"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+cql2 = "0.6.1"
+serde_json = "1"
+jiff = { version = "0.2", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+rusqlite = { version = "0.37", features = ["bundled"] }

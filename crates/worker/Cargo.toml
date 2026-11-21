@@ -1,0 +1,17 @@
+[package]
+name = "catalog-worker"
+edition.workspace = true
+version.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+catalog-core = { path = "../core" }
+worker = { version = "0.9", features = ["d1"] }
+serde = { version = "1", features = ["derive"] }
+
+# cql2 -> jsonschema -> ahash -> getrandom 0.3 needs its wasm backend; the matching
+# `--cfg getrandom_backend="wasm_js"` is in .cargo/config.toml.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }

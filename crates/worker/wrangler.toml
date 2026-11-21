@@ -1,0 +1,17 @@
+name = "catalog-search"
+main = "build/worker/shim.mjs"
+compatibility_date = "2025-11-01"
+
+[build]
+# wrangler runs this from where it was invoked (the repo root, via the npm scripts), not from
+# this file's directory, hence the cd. worker-build is installed under .tools, not globally, so
+# a different version elsewhere on the machine is left alone.
+command = "cd crates/worker && cargo install -q worker-build@^0.9 --root ../../.tools && ../../.tools/bin/worker-build --release"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "catalog-search"
+# Local development ignores this. For a real deploy: `wrangler d1 create catalog-search`
+# and paste the id it prints.
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "../core/migrations"
