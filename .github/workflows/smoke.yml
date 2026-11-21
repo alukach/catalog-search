@@ -1,0 +1,29 @@
+name: smoke
+
+# Runs stac-api-validator against the live API. Workers Builds deploys outside GitHub, so there
+# is no deploy event of ours to hang this on: it runs when Cloudflare's check on a commit finishes
+# successfully, daily (after load-index), and by hand. Results are in the run's summary.
+on:
+  check_run:
+    types: [completed]
+  schedule:
+    - cron: "47 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    # ponytail: matches any app with "cloudflare" in its slug; tighten once the real slug is seen.
+    if: github.event_name != 'check_run' || (github.event.check_run.conclusion == 'success' && contains(github.event.check_run.app.slug, 'cloudflare'))
+    runs-on: ubuntu-latest
+    env:
+      URL: https://catalog-search.alukach.workers.dev/
+    steps:
+      - uses: astral-sh/setup-uv@v6
+      - name: Validate
+        run: |
+          C=$(curl -fsS "${URL}collections?limit=1" | python3 -c "import sys,json;print(json.load(sys.stdin)['collections'][0]['id'])")
+          set +e
+          uvx stac-api-validator --root-url "$URL" --collection "$C" --conformance core --conformance collections > out.txt 2>&1
+          code=$?
+          { echo '```'; grep -v '^INFO:' out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit $code

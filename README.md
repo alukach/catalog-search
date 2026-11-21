@@ -1,5 +1,7 @@
 # catalog-search
 
+[![smoke](https://github.com/alukach/catalog-search/actions/workflows/smoke.yml/badge.svg)](https://github.com/alukach/catalog-search/actions/workflows/smoke.yml)
+
 A prototype that indexes the [Source Cooperative metadata catalog](https://github.com/source-cooperative/metadata-catalog) into Cloudflare D1 and serves it as a STAC API with Collection Search. Filters are CQL2, parsed by [`cql2`](https://crates.io/crates/cql2) (cql2-rs). Demo: https://catalog-search.alukach.workers.dev
 
 ```
