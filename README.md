@@ -21,7 +21,7 @@ The indexer and the worker share `core`, so the code that writes the index is th
 Needs Rust with the `wasm32-unknown-unknown` target, and Node 22+ (wrangler 4.114 and later). `.nvmrc` says `22`.
 
 ```sh
-npm install
+npm install --prefix crates/worker
 curl -L -o catalog.jsonl https://github.com/source-cooperative/metadata-catalog/releases/latest/download/catalog.jsonl
 
 npm run index        # catalog.jsonl -> out/load.sql
@@ -33,7 +33,31 @@ npm test             # 32 tests against a real SQLite
 npm run e2e          # 21 checks of the running API against jq over the raw catalog
 ```
 
-To deploy, `wrangler d1 create catalog-search`, put the id in `crates/worker/wrangler.toml`, and run the same migrate/load with `--remote`. **Not done here**; see "Not verified".
+## Deploy
+
+Two things deploy separately, because they change at different rates and need different credentials: the **Worker** (on every push, by Cloudflare's GitHub app) and the **data** (daily, by a GitHub Action). Workers Builds only runs on a push, and its default token has Workers Scripts, KV and R2 access but not D1, so it can't load the index.
+
+**1. Create the database, once.**
+
+```sh
+cd crates/worker && npx wrangler d1 create catalog-search
+```
+
+Put the `database_id` it prints into `crates/worker/wrangler.toml`, replacing the all-zeros placeholder, and commit it. The id isn't a secret.
+
+**2. Connect the repo in Cloudflare** (Workers & Pages → Create → Import a repository → this repo) with:
+
+| setting | value |
+|---|---|
+| Root directory | `crates/worker` |
+| Build command | `npm run build` |
+| Deploy command | `npx wrangler deploy` |
+
+`npm run build` installs `worker-build` 0.9 into `.tools/` and builds the wasm. It is the same command `wrangler dev` runs locally. Workers Builds doesn't read `[build]` in `wrangler.toml`, which is why it is set in the dashboard too.
+
+**3. Let GitHub load the data.** Add repository secrets `CLOUDFLARE_API_TOKEN` (an API token with *D1: Edit*) and `CLOUDFLARE_ACCOUNT_ID`, then run the **load index** workflow once (Actions → load index → Run workflow). After that it runs daily, applying migrations and replacing the index from the catalog's latest release. Until the secrets exist it skips itself with a notice instead of failing. The `ci` workflow runs the tests, clippy and a wasm build on every push and pull request.
+
+None of this has been run against a real Cloudflare account; see "Not verified".
 
 ## API
 
@@ -88,6 +112,7 @@ Both found real bugs in the first draft: an R\*Tree `id` can't repeat, and boxes
 
 ## Not verified, and limits
 
+- **The deploy path.** The Worker bundle was dry-run (`wrangler deploy --dry-run`: 1,023 KiB, 371 KiB gzipped, D1 binding recognised) and the workflows were written from Cloudflare's docs, but nothing has run on Workers Builds or against a real account. In particular the docs don't say whether the Workers Builds image has a Rust toolchain; if `npm run build` fails there on `rustup` or `cargo`, that is why. The `ci` and `load index` workflows are checked only by GitHub running them.
 - **Remote D1 and R\*Tree.** Everything ran on local D1 (workerd 1.20261119). workerd enabled R\*Tree on 2026-07-17, so older wrangler/workerd refuses `CREATE VIRTUAL TABLE … rtree` with `SQLITE_AUTH`. Cloudflare's D1 page lists only FTS5, JSON and math as supported extensions, though its 2026-11-12 changelog mentions R\*Tree. Nobody has run this against a remote D1; do that first. If it is refused, bbox falls back to four indexed numeric columns, which is fine at this size.
 - **Spatial literals other than a bbox are compared by their envelope.** A collection's geometry is its bboxes, so a rectangle is exact; a polygon can over-match, never under-match. For that reason `S_INTERSECTS` works but the spatial conformance classes are not claimed. Likewise the `T_` and `A_` functions work but aren't claimed as full classes.
 - **Dirty extents in the catalog.** Overshoot is clamped. A few global products have west slightly greater than east (`-179.9375` / `-179.979`); by STAC's rule that is a box crossing the antimeridian, i.e. nearly the whole globe, and it is indexed that way.

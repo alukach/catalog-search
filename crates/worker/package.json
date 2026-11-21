@@ -1,0 +1,16 @@
+{
+  "name": "catalog-worker",
+  "private": true,
+  "scripts": {
+    "build": "rustup target add wasm32-unknown-unknown && cargo install -q worker-build@^0.9 --root ../../.tools && ../../.tools/bin/worker-build --release",
+    "dev": "wrangler dev --local",
+    "deploy": "wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply DB --local",
+    "db:load": "wrangler d1 execute DB --local --file ../../out/load.sql",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "db:load:remote": "wrangler d1 execute DB --remote --yes --file ../../out/load.sql"
+  },
+  "devDependencies": {
+    "wrangler": "4.166.0"
+  }
+}
