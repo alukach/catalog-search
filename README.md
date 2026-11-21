@@ -6,7 +6,7 @@ A prototype that indexes the [Source Cooperative metadata catalog](https://githu
 
 ```mermaid
 flowchart TB
-    A[catalog.jsonl] -->|"read by"| B[indexer]
+    A[catalog.jsonl] -->|"one collection per line"| B[indexer]
     B -->|"writes SQL: schema, rows, keywords, bboxes, FTS"| C[out/load.sql]
     C -->|"replaces the index"| D["wrangler d1 execute"]
     D -->|"loads into"| E[(D1)]
