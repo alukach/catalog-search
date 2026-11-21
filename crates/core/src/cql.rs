@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use crate::{
     bbox::{self, BBox},
-    ts::{bound, norm, Edge},
+    ts::{bound, exact, Edge},
     Problem, Result,
 };
 
@@ -185,10 +185,7 @@ fn scalar(e: &Expr, b: &mut Vec<Bind>, hint: Option<Kind>) -> Result<String> {
             ))),
         },
         // Compared with a timestamp column, a string is read as a time.
-        Expr::Literal(s) if hint == Some(Kind::Time) => match norm(s, Edge::Start) {
-            Some(t) => text(b, t),
-            None => Err(Problem::bad(format!("`{s}` is not an RFC 3339 date or timestamp"))),
-        },
+        Expr::Literal(s) if hint == Some(Kind::Time) => text(b, exact(s, Edge::Start)?),
         Expr::Literal(s) => text(b, s.clone()),
         Expr::Float(f) => {
             b.push(num_bind(*f));
@@ -198,13 +195,7 @@ fn scalar(e: &Expr, b: &mut Vec<Bind>, hint: Option<Kind>) -> Result<String> {
             b.push(Bind::Int(*v as i64));
             Ok("?".into())
         }
-        Expr::Timestamp { timestamp: t } | Expr::Date { date: t } => {
-            let s = literal(t)?;
-            match norm(s, Edge::Start) {
-                Some(t) => text(b, t),
-                None => Err(Problem::bad(format!("`{s}` is not an RFC 3339 date or timestamp"))),
-            }
-        }
+        Expr::Timestamp { timestamp: t } | Expr::Date { date: t } => text(b, exact(literal(t)?, Edge::Start)?),
         Expr::Operation { op, args } if op == "casei" => {
             arity(op, args, 1)?;
             Ok(format!("lower({})", scalar(&args[0], b, hint)?))
@@ -283,13 +274,10 @@ fn envelope(e: &Expr) -> Result<Vec<BBox>> {
                     _ => Err(Problem::bad("BBOX takes numbers")),
                 })
                 .collect::<Result<_>>()?;
-            let (w, s, e, nn) = match n.len() {
-                4 => (n[0], n[1], n[2], n[3]),
-                6 => (n[0], n[1], n[3], n[4]),
-                k => return Err(Problem::bad(format!("BBOX takes 4 or 6 numbers, got {k}"))),
-            };
-            bbox::check(w, s, e, nn).map_err(Problem::bad)?;
-            Ok(bbox::split(w, s, e, nn))
+            let (w, s, e, n) = bbox::from_numbers(&n)
+                .ok_or_else(|| Problem::bad(format!("BBOX takes 4 or 6 numbers, got {}", n.len())))?;
+            bbox::check(w, s, e, n)?;
+            Ok(bbox::split(w, s, e, n))
         }
         Expr::Geometry(g) => {
             let v = serde_json::to_value(g).map_err(|e| Problem::bad(format!("bad geometry: {e}")))?;
@@ -303,7 +291,7 @@ fn envelope(e: &Expr) -> Result<Vec<BBox>> {
             };
             let (w, e) = (fold(f64::min, 0, f64::MAX), fold(f64::max, 0, f64::MIN));
             let (s, n) = (fold(f64::min, 1, f64::MAX), fold(f64::max, 1, f64::MIN));
-            bbox::check(w, s, e, n).map_err(Problem::bad)?;
+            bbox::check(w, s, e, n)?;
             Ok(bbox::split(w, s, e, n))
         }
         _ => Err(Problem::bad("expected a BBOX or geometry literal")),
@@ -418,8 +406,8 @@ fn temporal_col(e: &Expr) -> Option<TCol> {
 
 fn instant(e: &Expr, edge: Edge) -> Result<Option<String>> {
     match e {
-        Expr::Literal(s) => bound(s, edge).map_err(Problem::bad),
-        Expr::Timestamp { timestamp: t } | Expr::Date { date: t } => bound(literal(t)?, edge).map_err(Problem::bad),
+        Expr::Literal(s) => bound(s, edge),
+        Expr::Timestamp { timestamp: t } | Expr::Date { date: t } => bound(literal(t)?, edge),
         _ => Err(Problem::bad("an INTERVAL takes dates, timestamps or `..`")),
     }
 }
@@ -432,7 +420,7 @@ fn temporal_lit(e: &Expr) -> Result<(Option<String>, Option<String>)> {
         // An instant is a range of one; a bare date is the day.
         Expr::Timestamp { timestamp: t } | Expr::Date { date: t } => {
             let s = literal(t)?;
-            Ok((bound(s, Edge::Start).map_err(Problem::bad)?, bound(s, Edge::End).map_err(Problem::bad)?))
+            Ok((bound(s, Edge::Start)?, bound(s, Edge::End)?))
         }
         _ => Err(Problem::bad("expected an INTERVAL, TIMESTAMP or DATE")),
     }

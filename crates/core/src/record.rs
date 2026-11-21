@@ -36,6 +36,17 @@ pub enum Skip {
     NoId,
 }
 
+impl std::fmt::Display for Skip {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::NoBody => "seed or unregistered, no STAC body",
+            Self::NotPublic => "not public",
+            Self::Disabled => "disabled",
+            Self::NoId => "no account_id or product_id",
+        })
+    }
+}
+
 /// D1 rejects a statement over 100 KB, and the document is written into one. Documents carry
 /// a few outliers (a 790 KB `summaries`), so the heavy optional parts go before the record does.
 const DOC_BUDGET: usize = 40_000;
@@ -66,9 +77,8 @@ pub fn from_entry(v: &Value) -> Result<Record, Skip> {
     let int = |k: &str| v.get(k).and_then(Value::as_i64);
 
     let interval = v.pointer("/extent/temporal/interval/0").and_then(Value::as_array);
-    let edge = |i: usize, e: ts::Edge| {
-        interval.and_then(|a| a.get(i)).and_then(Value::as_str).and_then(|t| ts::norm(t, e))
-    };
+    let edge =
+        |i: usize, e: ts::Edge| interval.and_then(|a| a.get(i)).and_then(Value::as_str).and_then(|t| ts::norm(t, e));
 
     let mut keywords: Vec<String> = Vec::new();
     for k in v.get("keywords").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
@@ -77,7 +87,7 @@ pub fn from_entry(v: &Value) -> Result<Record, Skip> {
         }
     }
 
-    let doc = doc(v, &id, &title, &description, &license, &created, &updated);
+    let doc = doc(v, &id, &title, &description, &license, created.as_deref(), updated.as_deref());
     Ok(Record {
         data_mode: s("data_mode").map(str::to_owned),
         featured: v.get("featured").is_some_and(|f| f.as_i64() == Some(1) || f.as_bool() == Some(true)),
@@ -109,11 +119,7 @@ fn bboxes(v: &Value) -> Vec<bbox::BBox> {
         if n.len() != a.len() {
             continue;
         }
-        let (w, s, e, nn) = match n.len() {
-            4 => (n[0], n[1], n[2], n[3]),
-            6 => (n[0], n[1], n[3], n[4]),
-            _ => continue,
-        };
+        let Some((w, s, e, nn)) = bbox::from_numbers(&n) else { continue };
         // Global datasets come with a hair of overshoot (-90.0000051, 180.05, even a 97.1), and
         // dropping the box would hide exactly the datasets a world-sized query is after.
         // `split` clamps longitude; latitude is clamped here. A query's own bbox stays strict.
@@ -135,8 +141,8 @@ fn doc(
     title: &str,
     description: &str,
     license: &str,
-    created: &Option<String>,
-    updated: &Option<String>,
+    created: Option<&str>,
+    updated: Option<&str>,
 ) -> String {
     let mut m = Map::new();
     m.insert("type".into(), json!("Collection"));
@@ -283,7 +289,8 @@ mod tests {
     #[test]
     fn extent_is_schema_valid() {
         let r = from_entry(&entry(json!({"extent": {"spatial": {"bbox": [[null, null, null, null]]},
-            "temporal": {"interval": [["2018-12-23T19:12:50", null]]}}}))).unwrap();
+            "temporal": {"interval": [["2018-12-23T19:12:50", null]]}}})))
+        .unwrap();
         let d: Value = serde_json::from_str(&r.doc).unwrap();
         assert_eq!(d["extent"]["spatial"]["bbox"], json!([[-180, -90, 180, 90]]));
         assert_eq!(d["extent"]["temporal"]["interval"], json!([["2018-12-23T19:12:50Z", null]]));

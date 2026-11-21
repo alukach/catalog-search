@@ -7,10 +7,28 @@ use catalog_core::{
     search::{self, Params},
     Problem,
 };
+use percent_encoding::percent_decode_str;
 use serde::Deserialize;
 use worker::*;
 
-type Reply = std::result::Result<Response, Problem>;
+type Reply = std::result::Result<Response, Failure>;
+
+/// A `Problem` to answer with. Anything the runtime raises becomes the opaque 500 through `?`,
+/// its cause going to the log; the orphan rule keeps that `From` from living on `Problem`.
+struct Failure(Problem);
+
+impl From<Problem> for Failure {
+    fn from(p: Problem) -> Self {
+        Self(p)
+    }
+}
+
+impl From<Error> for Failure {
+    fn from(e: Error) -> Self {
+        console_error!("{e}");
+        Self(Problem::internal())
+    }
+}
 
 #[derive(Deserialize)]
 struct DocRow {
@@ -28,7 +46,7 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     let base = url.origin().ascii_serialization();
     let mut resp = match route(&req, &url, &env, &base).await {
         Ok(r) => r,
-        Err(p) => problem(&p)?,
+        Err(Failure(p)) => problem(&p)?,
     };
     let h = resp.headers_mut();
     h.set("access-control-allow-origin", "*")?;
@@ -39,9 +57,9 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 
 async fn route(req: &Request, url: &Url, env: &Env, base: &str) -> Reply {
     match req.method() {
-        Method::Options => return Response::empty().map(|r| r.with_status(204)).map_err(internal),
+        Method::Options => return Ok(Response::empty()?.with_status(204)),
         Method::Get | Method::Head => {}
-        _ => return Err(Problem { status: 405, title: "Method Not Allowed", detail: "this API is read-only".into() }),
+        _ => return Err(Problem::method_not_allowed().into()),
     }
     match url.path().trim_end_matches('/') {
         "" => json(api::landing(base), "application/json"),
@@ -51,7 +69,7 @@ async fn route(req: &Request, url: &Url, env: &Env, base: &str) -> Reply {
         "/collections" => collections(url, env, base).await,
         p => match p.strip_prefix("/collections/") {
             Some(id) => collection(&decode(id), env, base).await,
-            None => Err(Problem::not_found(format!("no resource at {p}"))),
+            None => Err(Problem::not_found(format!("no resource at {p}")).into()),
         },
     }
 }
@@ -60,26 +78,27 @@ async fn collections(url: &Url, env: &Env, base: &str) -> Reply {
     let pairs: Vec<(String, String)> = url.query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
     let q = search::build(&Params::from_pairs(pairs.iter().map(|(k, v)| (k.as_str(), v.as_str()))))?;
 
-    let db = env.d1("DB").map_err(internal)?;
-    let rows = prepare(&db, &q.rows_sql, &q.rows_binds).map_err(internal)?;
-    let count = prepare(&db, &q.count_sql, &q.count_binds).map_err(internal)?;
+    let db = env.d1("DB")?;
+    let rows = prepare(&db, &q.rows_sql, &q.rows_binds)?;
+    let count = prepare(&db, &q.count_sql, &q.count_binds)?;
     // One round trip for both.
-    let mut results = db.batch(vec![rows, count]).await.map_err(internal)?.into_iter();
+    let mut results = db.batch(vec![rows, count]).await?.into_iter();
     let (Some(rows), Some(count)) = (results.next(), results.next()) else {
-        return Err(internal("D1 returned fewer results than statements"));
+        console_error!("D1 returned fewer results than statements");
+        return Err(Problem::internal().into());
     };
-    let docs: Vec<String> = rows.results::<DocRow>().map_err(internal)?.into_iter().map(|r| r.doc).collect();
-    let matched = count.results::<CountRow>().map_err(internal)?.first().map_or(0.0, |c| c.n) as u64;
+    let docs: Vec<String> = rows.results::<DocRow>()?.into_iter().map(|r| r.doc).collect();
+    let matched = count.results::<CountRow>()?.first().map_or(0.0, |c| c.n) as u64;
 
     json(api::collections_body(&docs, base, &pairs, q.offset, q.limit, matched), "application/json")
 }
 
 async fn collection(id: &str, env: &Env, base: &str) -> Reply {
-    let db = env.d1("DB").map_err(internal)?;
-    let stmt = prepare(&db, "SELECT doc FROM collections WHERE id = ?", &[Bind::Text(id.to_owned())]).map_err(internal)?;
-    match stmt.first::<DocRow>(None).await.map_err(internal)? {
+    let db = env.d1("DB")?;
+    let stmt = prepare(&db, "SELECT doc FROM collections WHERE id = ?", &[Bind::Text(id.to_owned())])?;
+    match stmt.first::<DocRow>(None).await? {
         Some(r) => json(api::collection_body(&r.doc, base), "application/json"),
-        None => Err(Problem::not_found(format!("no collection `{id}`"))),
+        None => Err(Problem::not_found(format!("no collection `{id}`")).into()),
     }
 }
 
@@ -98,11 +117,11 @@ fn prepare(db: &D1Database, sql: &str, binds: &[Bind]) -> Result<D1PreparedState
 }
 
 fn json(body: String, content_type: &str) -> Reply {
-    let mut r = Response::ok(body).map_err(internal)?;
+    let mut r = Response::ok(body)?;
     let h = r.headers_mut();
-    h.set("content-type", content_type).map_err(internal)?;
+    h.set("content-type", content_type)?;
     // The index is rebuilt daily; a few minutes at the edge costs nothing in freshness.
-    h.set("cache-control", "public, max-age=300").map_err(internal)?;
+    h.set("cache-control", "public, max-age=300")?;
     Ok(r)
 }
 
@@ -112,29 +131,7 @@ fn problem(p: &Problem) -> Result<Response> {
     Ok(r)
 }
 
-/// The cause goes to the log; the caller gets nothing that could leak a query.
-fn internal(e: impl std::fmt::Display) -> Problem {
-    console_error!("{e}");
-    Problem { status: 500, title: "Internal Server Error", detail: "the request could not be completed".into() }
-}
-
 /// Collection ids contain a slash (`account/product`), which clients may send as `%2F`.
 fn decode(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        let hex = |c: u8| (c as char).to_digit(16).map(|d| d as u8);
-        match (b[i], b.get(i + 1).and_then(|c| hex(*c)), b.get(i + 2).and_then(|c| hex(*c))) {
-            (b'%', Some(h), Some(l)) => {
-                out.push(h << 4 | l);
-                i += 3;
-            }
-            (c, ..) => {
-                out.push(c);
-                i += 1;
-            }
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
+    percent_decode_str(s).decode_utf8_lossy().into_owned()
 }

@@ -35,6 +35,15 @@ impl Problem {
         Self { status: 404, title: "Not Found", detail: detail.into() }
     }
 
+    pub fn method_not_allowed() -> Self {
+        Self { status: 405, title: "Method Not Allowed", detail: "this API is read-only".into() }
+    }
+
+    /// Carries no cause: the caller learns nothing that could leak a query.
+    pub fn internal() -> Self {
+        Self { status: 500, title: "Internal Server Error", detail: "the request could not be completed".into() }
+    }
+
     pub fn json(&self) -> String {
         serde_json::json!({
             "type": "about:blank",
@@ -45,6 +54,8 @@ impl Problem {
         .to_string()
     }
 }
+
+impl std::error::Error for Problem {}
 
 impl std::fmt::Display for Problem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

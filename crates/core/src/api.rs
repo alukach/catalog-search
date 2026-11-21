@@ -1,6 +1,7 @@
 //! The STAC API's own documents: landing page, conformance, queryables, and the paged
 //! `/collections` response.
 
+use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 use serde_json::{json, Value};
 
 use crate::BASE;
@@ -97,15 +98,11 @@ pub fn queryables(base: &str) -> String {
     .to_string()
 }
 
-/// Percent-encodes everything but RFC 3986 unreserved characters.
+/// Everything but RFC 3986 unreserved characters.
+const ENCODE: &AsciiSet = &NON_ALPHANUMERIC.remove(b'-').remove(b'_').remove(b'.').remove(b'~');
+
 fn enc(s: &str) -> String {
-    s.bytes().fold(String::new(), |mut o, b| {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => o.push(b as char),
-            _ => o.push_str(&format!("%{b:02X}")),
-        }
-        o
-    })
+    utf8_percent_encode(s, ENCODE).to_string()
 }
 
 /// `/collections` with the request's own parameters, and `token` set to `token` if given.
@@ -174,9 +171,17 @@ mod tests {
     #[test]
     fn paging_links() {
         let q = vec![("q".to_owned(), "a b".to_owned()), ("token".to_owned(), "10".to_owned())];
-        let body = collections_body(&[r#"{"id":"x","links":[{"href":"{{BASE}}/c"}]}"#.into()], "http://h", &q, 10, 10, 25);
+        let body =
+            collections_body(&[r#"{"id":"x","links":[{"href":"{{BASE}}/c"}]}"#.into()], "http://h", &q, 10, 10, 25);
         let v: Value = serde_json::from_str(&body).unwrap();
-        let href = |rel: &str| v["links"].as_array().unwrap().iter().find(|l| l["rel"] == rel).map(|l| l["href"].as_str().unwrap().to_owned());
+        let href = |rel: &str| {
+            v["links"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|l| l["rel"] == rel)
+                .map(|l| l["href"].as_str().unwrap().to_owned())
+        };
         assert_eq!(href("next").unwrap(), "http://h/collections?q=a%20b&token=20");
         assert_eq!(href("prev").unwrap(), "http://h/collections?q=a%20b&token=0");
         assert_eq!(href("first").unwrap(), "http://h/collections?q=a%20b");
