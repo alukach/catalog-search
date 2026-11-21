@@ -4,10 +4,11 @@
 
 A prototype that indexes the [Source Cooperative metadata catalog](https://github.com/source-cooperative/metadata-catalog) into Cloudflare D1 and serves it as a STAC API with Collection Search. Filters are CQL2, parsed by [`cql2`](https://crates.io/crates/cql2) (cql2-rs). Demo: https://catalog-search.alukach.workers.dev
 
-```
-catalog.jsonl ──► indexer ──► out/load.sql ──► wrangler d1 execute ──► D1
-                                                                       │
-                       GET /collections?bbox=…&q=…&filter=… ◄── worker ┘
+```mermaid
+flowchart LR
+    A[catalog.jsonl] --> B[indexer] --> C[out/load.sql] --> D["wrangler d1 execute"] --> E[(D1)]
+    E --- F[worker]
+    F --> G["GET /collections?bbox=…&q=…&filter=…"]
 ```
 
 | crate | runs as | does |
