@@ -45,6 +45,7 @@ async fn route(req: &Request, url: &Url, env: &Env, base: &str) -> Reply {
     }
     match url.path().trim_end_matches('/') {
         "" => json(api::landing(base), "application/json"),
+        "/api" => json(api::openapi(base), "application/vnd.oai.openapi+json;version=3.0"),
         "/conformance" => json(api::conformance(), "application/json"),
         "/collection-queryables" => json(api::queryables(base), "application/schema+json"),
         "/collections" => collections(url, env, base).await,

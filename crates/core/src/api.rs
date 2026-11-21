@@ -44,7 +44,27 @@ pub fn landing(base: &str) -> String {
             link("conformance", format!("{base}/conformance")),
             link("data", format!("{base}/collections")),
             link(QUERYABLES_REL, format!("{base}/collection-queryables")),
+            json!({"rel": "service-desc", "type": "application/vnd.oai.openapi+json;version=3.0", "title": "OpenAPI definition", "href": format!("{base}/api")}),
+            json!({"rel": "service-doc", "type": "text/html", "title": "Documentation", "href": "https://github.com/alukach/catalog-search#readme"}),
         ],
+    })
+    .to_string()
+}
+
+/// ponytail: paths only, no response schemas; add them if a client generator needs them.
+pub fn openapi(base: &str) -> String {
+    let get = |summary: &str| json!({"get": {"summary": summary, "responses": {"200": {"description": "OK"}}}});
+    json!({
+        "openapi": "3.0.3",
+        "info": {"title": "Source Cooperative catalog search", "version": "1.0.0"},
+        "servers": [{"url": base}],
+        "paths": {
+            "/": get("Landing page"),
+            "/conformance": get("Conformance classes"),
+            "/collections": get("Search collections"),
+            "/collections/{collectionId}": get("One collection"),
+            "/collection-queryables": get("Queryables"),
+        },
     })
     .to_string()
 }
