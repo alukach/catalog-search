@@ -92,6 +92,51 @@ curl -G localhost:8787/collections --data-urlencode filter-lang=cql2-json \
 
 `q` is the STAC basic free-text search: comma-separated terms, any may match, each matched as a phrase, over title, description and keywords, ranked by BM25 (title ×10, keywords ×5).
 
+## Schema
+
+```mermaid
+erDiagram
+    collections ||--o{ collection_keywords : "cid = rowid"
+    collections ||--o{ collection_bbox : "cid = rowid"
+    collections ||--o| collections_fts : "rowid"
+
+    collections {
+        TEXT id UK "account_id/product_id"
+        TEXT account_id
+        TEXT product_id
+        TEXT title
+        TEXT description
+        TEXT license
+        TEXT data_mode
+        INTEGER featured
+        INTEGER total_bytes
+        INTEGER object_count
+        TEXT created
+        TEXT updated
+        TEXT dt_start
+        TEXT dt_end
+        INTEGER has_bbox
+        TEXT doc "collection JSON, {{BASE}} placeholder"
+    }
+    collection_keywords {
+        INTEGER cid PK
+        TEXT term PK
+    }
+    collection_bbox {
+        INTEGER id PK "rtree"
+        REAL minx
+        REAL maxx
+        REAL miny
+        REAL maxy
+        INTEGER cid "auxiliary"
+    }
+    collections_fts {
+        TEXT title "fts5"
+        TEXT description
+        TEXT keywords
+    }
+```
+
 ## Design
 
 - **D1 holds three indexes beside the document.** FTS5 for text; an R\*Tree for bbox; a keyword table, because neither SQLite nor D1's metadata filters can match inside an array.
