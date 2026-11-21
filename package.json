@@ -2,6 +2,7 @@
   "name": "catalog-search",
   "private": true,
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks",
     "index": "cargo run -q --release -p indexer -- --input catalog.jsonl --out out/load.sql",
     "test": "cargo test",
     "e2e": "scripts/e2e.sh http://127.0.0.1:8787 catalog.jsonl",

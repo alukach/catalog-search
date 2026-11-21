@@ -150,6 +150,7 @@ version = "0.1.0"
 dependencies = [
  "cql2",
  "jiff",
+ "percent-encoding",
  "rusqlite",
  "serde_json",
 ]
@@ -160,6 +161,7 @@ version = "0.1.0"
 dependencies = [
  "catalog-core",
  "getrandom",
+ "percent-encoding",
  "serde",
  "worker",
 ]

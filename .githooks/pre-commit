@@ -1,0 +1,6 @@
+#!/bin/sh
+# Same checks as CI. Enabled by `npm install` (the `prepare` script sets core.hooksPath), or
+# by hand: git config core.hooksPath .githooks
+set -e
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings

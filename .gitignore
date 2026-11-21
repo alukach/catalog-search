@@ -5,3 +5,4 @@ crates/worker/build/
 out/
 .tools/
 catalog.jsonl
+.claude/

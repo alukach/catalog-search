@@ -109,9 +109,7 @@ fn reloading_replaces_rather_than_appends() {
 #[test]
 fn free_text_finds_by_title_and_ors_commas() {
     let f = fx();
-    let word = |r: &Record| {
-        r.title.split(|c: char| !c.is_alphabetic()).find(|w| w.len() >= 6).map(str::to_lowercase)
-    };
+    let word = |r: &Record| r.title.split(|c: char| !c.is_alphabetic()).find(|w| w.len() >= 6).map(str::to_lowercase);
     let mut seen = f.records.iter().filter_map(|r| word(r).map(|w| (r.id.clone(), w)));
     let (id_a, a) = seen.next().expect("a title with a long word");
     let (_, b) = seen.find(|(_, w)| *w != a).expect("a second word");
@@ -148,10 +146,14 @@ fn overlaps(r: &Record, q: [f64; 4]) -> bool {
 #[test]
 fn bbox_matches_brute_force_including_multi_box_and_antimeridian() {
     let f = fx();
-    for q in ["-10,35,30,60", "100,-40,160,-10", "-180,-90,180,90", "170,-20,-170,20", "-100,30,-90,40", "5,5,5.5,5.5"] {
+    for q in ["-10,35,30,60", "100,-40,160,-10", "-180,-90,180,90", "170,-20,-170,20", "-100,30,-90,40", "5,5,5.5,5.5"]
+    {
         let n: Vec<f64> = q.split(',').map(|x| x.parse().unwrap()).collect();
-        let pieces: Vec<[f64; 4]> =
-            if n[0] > n[2] { vec![[n[0], n[1], 180.0, n[3]], [-180.0, n[1], n[2], n[3]]] } else { vec![[n[0], n[1], n[2], n[3]]] };
+        let pieces: Vec<[f64; 4]> = if n[0] > n[2] {
+            vec![[n[0], n[1], 180.0, n[3]], [-180.0, n[1], n[2], n[3]]]
+        } else {
+            vec![[n[0], n[1], n[2], n[3]]]
+        };
         let expect = f.all(|r| pieces.iter().any(|p| overlaps(r, *p)));
         assert_eq!(f.ids(&params(|p| p.bbox = Some(q.into()))), expect, "bbox={q}");
     }
@@ -185,7 +187,10 @@ fn bbox_and_datetime_and_text_combine_with_and() {
         p.bbox = Some("-10,35,30,60".into());
         p.datetime = Some("2020-01-01/..".into());
     }));
-    assert_eq!(both, f.all(|r| overlaps(r, [-10.0, 35.0, 30.0, 60.0]) && in_range(r, Some("2020-01-01T00:00:00Z"), None)));
+    assert_eq!(
+        both,
+        f.all(|r| overlaps(r, [-10.0, 35.0, 30.0, 60.0]) && in_range(r, Some("2020-01-01T00:00:00Z"), None))
+    );
 }
 
 // ---- CQL2 -------------------------------------------------------------------------------------
@@ -328,7 +333,8 @@ fn temporal_functions_match_interval_logic() {
     );
     assert_eq!(
         f.filter("T_DURING(datetime, INTERVAL('2015-01-01','2025-01-01'))"),
-        f.all(|r| ge(&r.dt_start, "2015-01-01T00:00:00Z") && r.dt_end.as_deref().is_some_and(|e| e <= "2025-01-01T23:59:59Z"))
+        f.all(|r| ge(&r.dt_start, "2015-01-01T00:00:00Z")
+            && r.dt_end.as_deref().is_some_and(|e| e <= "2025-01-01T23:59:59Z"))
     );
     // with the value first the relation reads the other way round
     assert_eq!(
@@ -372,7 +378,12 @@ fn sorting_and_paging_walk_the_whole_set_once() {
     let mut got = Vec::new();
     let mut token = None;
     loop {
-        let p = Params { sortby: Some("-total_bytes".into()), limit: Some("7".into()), token: token.clone(), ..Default::default() };
+        let p = Params {
+            sortby: Some("-total_bytes".into()),
+            limit: Some("7".into()),
+            token: token.clone(),
+            ..Default::default()
+        };
         let (ids, matched) = f.run(&p).unwrap();
         assert_eq!(matched as usize, f.records.len());
         got.extend(ids.clone());
@@ -406,7 +417,15 @@ fn bad_requests_are_400s_that_say_why() {
     assert!(bad(&f, filter("S_WITHIN(geometry, BBOX(0,0,1,1))")).detail.contains("s_within"));
     assert!(bad(&f, filter("keywords = 'x'")).detail.contains("keywords"));
     assert!(bad(&f, filter("T_INTERSECTS(title, INTERVAL('2020-01-01','..'))")).detail.contains("datetime"));
-    assert!(bad(&f, params(|p| { p.filter = Some("title = 'x'".into()); p.filter_lang = Some("cql".into()) })).detail.contains("filter-lang"));
+    assert!(bad(
+        &f,
+        params(|p| {
+            p.filter = Some("title = 'x'".into());
+            p.filter_lang = Some("cql".into())
+        })
+    )
+    .detail
+    .contains("filter-lang"));
     assert_eq!(bad(&f, params(|p| p.bbox = Some("1,2,3".into()))).status, 400);
     assert_eq!(bad(&f, params(|p| p.datetime = Some("yesterday".into()))).status, 400);
     assert!(bad(&f, params(|p| p.sortby = Some("nope".into()))).detail.contains("sortable fields"));

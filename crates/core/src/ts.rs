@@ -1,6 +1,7 @@
 //! Timestamps are stored and compared as UTC text, `YYYY-MM-DDTHH:MM:SSZ`, so that text order
 //! is time order and SQLite needs no date functions.
 
+use crate::{Problem, Result};
 use jiff::{
     civil::{Date, DateTime},
     tz::TimeZone,
@@ -44,12 +45,17 @@ fn fmt(t: Timestamp) -> String {
 }
 
 /// A bound of an open-ended range: `..` or empty means unbounded.
-pub fn bound(s: &str, edge: Edge) -> Result<Option<String>, String> {
+pub fn bound(s: &str, edge: Edge) -> Result<Option<String>> {
     let s = s.trim();
     if s.is_empty() || s == ".." {
         return Ok(None);
     }
-    norm(s, edge).map(Some).ok_or_else(|| format!("`{s}` is not an RFC 3339 date or timestamp"))
+    exact(s, edge).map(Some)
+}
+
+/// `norm`, as a 400 naming the value when it isn't a date or timestamp.
+pub fn exact(s: &str, edge: Edge) -> Result<String> {
+    norm(s, edge).ok_or_else(|| Problem::bad(format!("`{s}` is not an RFC 3339 date or timestamp")))
 }
 
 #[cfg(test)]

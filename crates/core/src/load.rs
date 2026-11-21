@@ -11,8 +11,8 @@ fn q(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
 
-fn opt(s: &Option<String>) -> String {
-    s.as_deref().map_or("NULL".into(), q)
+fn opt(s: Option<&str>) -> String {
+    s.map_or("NULL".into(), q)
 }
 
 fn num(n: Option<i64>) -> String {
@@ -39,14 +39,14 @@ pub fn load_sql(records: &[Record]) -> Result<String, String> {
                 q(&r.description),
                 q(&r.license),
                 r.data_mode.as_deref().map_or("NULL".into(), q),
-                r.featured as u8,
+                u8::from(r.featured),
                 num(r.total_bytes),
                 num(r.object_count),
-                opt(&r.created),
-                opt(&r.updated),
-                opt(&r.dt_start),
-                opt(&r.dt_end),
-                !r.bboxes.is_empty() as u8,
+                opt(r.created.as_deref()),
+                opt(r.updated.as_deref()),
+                opt(r.dt_start.as_deref()),
+                opt(r.dt_end.as_deref()),
+                u8::from(!r.bboxes.is_empty()),
                 q(&r.doc),
             ),
             format!(
@@ -68,15 +68,13 @@ pub fn load_sql(records: &[Record]) -> Result<String, String> {
             writeln!(out, "INSERT INTO collection_keywords (cid, term) VALUES {};", rows.join(", ")).unwrap();
         }
         if !r.bboxes.is_empty() {
-            let rows: Vec<_> = r
-                .bboxes
-                .iter()
-                .map(|b| {
-                    box_id += 1;
-                    format!("({box_id}, {}, {}, {}, {}, {rowid})", b[0], b[2], b[1], b[3])
-                })
-                .collect();
-            writeln!(out, "INSERT INTO collection_bbox (id, minx, maxx, miny, maxy, cid) VALUES {};", rows.join(", ")).unwrap();
+            let mut rows = Vec::new();
+            for b in &r.bboxes {
+                box_id += 1;
+                rows.push(format!("({box_id}, {}, {}, {}, {}, {rowid})", b[0], b[2], b[1], b[3]));
+            }
+            writeln!(out, "INSERT INTO collection_bbox (id, minx, maxx, miny, maxy, cid) VALUES {};", rows.join(", "))
+                .unwrap();
         }
     }
     if too_big.is_empty() {

@@ -31,7 +31,7 @@ fn main() {
         let entry: Value = serde_json::from_str(line).unwrap_or_else(|e| die(format!("{input}:{}: {e}", n + 1)));
         match from_entry(&entry) {
             Ok(r) => records.push(r),
-            Err(why) => *skipped.entry(format!("{why:?}")).or_default() += 1,
+            Err(why) => *skipped.entry(why.to_string()).or_default() += 1,
         }
     }
 

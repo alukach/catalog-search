@@ -68,7 +68,7 @@ pub fn build(p: &Params) -> Result<Query> {
         b.push(Bind::Text(m));
     }
     if let Some(raw) = &p.bbox {
-        wh.push(cql::bbox_clause(&bbox::parse_param(raw).map_err(Problem::bad)?, &mut b));
+        wh.push(cql::bbox_clause(&bbox::parse_param(raw)?, &mut b));
     }
     if let Some(raw) = &p.datetime {
         let (lo, hi) = datetime(raw)?;
@@ -96,9 +96,12 @@ pub fn build(p: &Params) -> Result<Query> {
     let where_sql = if wh.is_empty() { "1".to_owned() } else { wh.join(" AND ") };
     let from = format!("FROM collections c{join} WHERE {where_sql}");
     let mut rows_binds = b.clone();
-    rows_binds.extend([Bind::Int(limit as i64), Bind::Int(offset as i64)]);
+    rows_binds.extend([Bind::Int(i64::from(limit)), Bind::Int(i64::from(offset))]);
     Ok(Query {
-        rows_sql: format!("SELECT c.doc AS doc {from} ORDER BY {} LIMIT ? OFFSET ?", order(p.sortby.as_deref(), !join.is_empty())?),
+        rows_sql: format!(
+            "SELECT c.doc AS doc {from} ORDER BY {} LIMIT ? OFFSET ?",
+            order(p.sortby.as_deref(), !join.is_empty())?
+        ),
         rows_binds,
         count_sql: format!("SELECT COUNT(*) AS n {from}"),
         count_binds: b,
@@ -125,7 +128,7 @@ fn datetime(raw: &str) -> Result<(Option<String>, Option<String>)> {
         // An instant; a bare date is the whole day.
         None => (bound(raw, Edge::Start), bound(raw, Edge::End)),
     };
-    let (lo, hi) = (lo.map_err(Problem::bad)?, hi.map_err(Problem::bad)?);
+    let (lo, hi) = (lo?, hi?);
     match (&lo, &hi) {
         (None, None) => Err(Problem::bad("datetime must be bounded at one end at least")),
         (Some(l), Some(h)) if l > h => Err(Problem::bad("datetime starts after it ends")),
