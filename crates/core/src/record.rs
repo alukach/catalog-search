@@ -148,7 +148,10 @@ fn doc(
     m.insert("title".into(), json!(title));
     m.insert("description".into(), json!(description));
     m.insert("license".into(), json!(license));
-    for k in ["keywords", "providers", "extent"] {
+    if let Some(x) = extent(v) {
+        m.insert("extent".into(), x);
+    }
+    for k in ["keywords", "providers"] {
         if let Some(x) = v.get(k).filter(|x| !x.is_null()) {
             m.insert(k.into(), x.clone());
         }
@@ -181,6 +184,36 @@ fn doc(
         out = Value::Object(m.clone()).to_string();
     }
     out
+}
+
+/// STAC wants numeric bboxes and UTC timestamps; the source has `null` boxes and zoneless times.
+/// With no usable box the whole world stands in, as the schema requires one.
+fn extent(v: &Value) -> Option<Value> {
+    let e = v.get("extent").filter(|e| e.is_object())?;
+    let mut boxes: Vec<Value> = e
+        .pointer("/spatial/bbox")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|b| b.as_array().is_some_and(|a| !a.is_empty() && a.iter().all(Value::is_number)))
+        .cloned()
+        .collect();
+    if boxes.is_empty() {
+        boxes.push(json!([-180, -90, 180, 90]));
+    }
+    let intervals: Vec<Value> = e
+        .pointer("/temporal/interval")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_array)
+        .map(|i| {
+            let t = |n: usize, edge| i.get(n).and_then(Value::as_str).and_then(|t| ts::norm(t, edge));
+            json!([t(0, ts::Edge::Start), t(1, ts::Edge::End)])
+        })
+        .collect();
+    let intervals = if intervals.is_empty() { vec![json!([null, null])] } else { intervals };
+    Some(json!({"spatial": {"bbox": boxes}, "temporal": {"interval": intervals}}))
 }
 
 fn links(v: &Value, id: &str) -> Value {
@@ -235,6 +268,15 @@ mod tests {
         let doc: Value = serde_json::from_str(&r.doc).unwrap();
         let rels: Vec<_> = doc["links"].as_array().unwrap().iter().map(|l| l["rel"].as_str().unwrap()).collect();
         assert_eq!(rels, ["self", "root", "parent", "canonical", "via"]);
+    }
+
+    #[test]
+    fn extent_is_schema_valid() {
+        let r = from_entry(&entry(json!({"extent": {"spatial": {"bbox": [[null, null, null, null]]},
+            "temporal": {"interval": [["2018-12-23T19:12:50", null]]}}}))).unwrap();
+        let d: Value = serde_json::from_str(&r.doc).unwrap();
+        assert_eq!(d["extent"]["spatial"]["bbox"], json!([[-180, -90, 180, 90]]));
+        assert_eq!(d["extent"]["temporal"]["interval"], json!([["2018-12-23T19:12:50Z", null]]));
     }
 
     #[test]

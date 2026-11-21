@@ -24,6 +24,10 @@ pub fn norm(s: &str, edge: Edge) -> Option<String> {
         Edge::Start => (0, 0, 0),
         Edge::End => (23, 59, 59),
     };
+    // jiff's `Date` parser accepts a datetime and drops the time, so a bare date is told apart first.
+    if s.contains('T') {
+        return s.parse::<DateTime>().ok().and_then(utc);
+    }
     if let Ok(d) = s.parse::<Date>() {
         return utc(d.at(h, m, sec, 0));
     }
