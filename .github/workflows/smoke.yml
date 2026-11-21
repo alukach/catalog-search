@@ -1,4 +1,4 @@
-name: smoke
+name: api-validation
 
 # Runs stac-api-validator against the live API. Workers Builds deploys outside GitHub, so there
 # is no deploy event of ours to hang this on: it runs when Cloudflare's check on a commit finishes
