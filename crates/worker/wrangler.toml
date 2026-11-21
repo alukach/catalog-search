@@ -11,7 +11,5 @@ command = "npm run build"
 [[d1_databases]]
 binding = "DB"
 database_name = "catalog-search"
-# Local development ignores this id. Before deploying, create the database once with
-# `npx wrangler d1 create catalog-search` and replace this with the id it prints.
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "7c970f16-e88d-4852-8a62-d91dd13416c7"
 migrations_dir = "../core/migrations"
