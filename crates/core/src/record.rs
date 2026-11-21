@@ -141,10 +141,8 @@ fn doc(
     let mut m = Map::new();
     m.insert("type".into(), json!("Collection"));
     m.insert("stac_version".into(), v.get("stac_version").cloned().unwrap_or(json!("1.1.0")));
-    for k in ["stac_extensions"] {
-        if let Some(x) = v.get(k).filter(|x| x.is_array()) {
-            m.insert(k.into(), x.clone());
-        }
+    if let Some(x) = v.get("stac_extensions").filter(|x| x.is_array()) {
+        m.insert("stac_extensions".into(), x.clone());
     }
     m.insert("id".into(), json!(id));
     m.insert("title".into(), json!(title));
