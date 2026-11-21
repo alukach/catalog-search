@@ -1,6 +1,6 @@
 # catalog-search
 
-A prototype that indexes the [Source Cooperative metadata catalog](https://github.com/source-cooperative/metadata-catalog) into Cloudflare D1 and serves it as a STAC API with Collection Search. Filters are CQL2, parsed by [`cql2`](https://crates.io/crates/cql2) (cql2-rs).
+A prototype that indexes the [Source Cooperative metadata catalog](https://github.com/source-cooperative/metadata-catalog) into Cloudflare D1 and serves it as a STAC API with Collection Search. Filters are CQL2, parsed by [`cql2`](https://crates.io/crates/cql2) (cql2-rs). Demo: https://catalog-search.alukach.workers.dev
 
 ```
 catalog.jsonl ──► indexer ──► out/load.sql ──► wrangler d1 execute ──► D1
@@ -57,7 +57,7 @@ Put the `database_id` it prints into `crates/worker/wrangler.toml`, replacing th
 
 **3. Let GitHub load the data.** Add repository secrets `CLOUDFLARE_API_TOKEN` (an API token with *D1: Edit*) and `CLOUDFLARE_ACCOUNT_ID`, then run the **load index** workflow once (Actions → load index → Run workflow). After that it runs daily, applying migrations and replacing the index from the catalog's latest release. Until the secrets exist it skips itself with a notice instead of failing. The `ci` workflow runs the tests, clippy and a wasm build on every push and pull request.
 
-None of this has been run against a real Cloudflare account; see "Not verified".
+Run by hand against a real account (alukach, 2026-11-21): migrate, load, `wrangler deploy` and the 21 checks, which all pass against the deployed Worker. Not yet run: the Workers Builds connection (it needs a dashboard step; the Cloudflare GitHub app has to be authorised) and the scheduled `load index` workflow with real secrets.
 
 ## API
 
@@ -101,7 +101,7 @@ curl -G localhost:8787/collections --data-urlencode filter-lang=cql2-json \
 
 ### Rust, not TypeScript
 
-`cql2` is native Rust, so Rust gets it with no wrapper, and the indexer shares its code with the worker. Rust is not why it's fast: the request is dominated by the D1 round trip (one, since rows and count go in a batch), and a TypeScript worker would spend about the same. The wasm is 1.0 MB, 363 KB gzipped, well inside Workers' limits. Locally a query takes ~4–5 ms; that is miniflare, not production.
+`cql2` is native Rust, so Rust gets it with no wrapper, and the indexer shares its code with the worker. Rust is not why it's fast: the request is dominated by the D1 round trip (one, since rows and count go in a batch), and a TypeScript worker would spend about the same. The wasm is 1.0 MB, 363 KB gzipped, well inside Workers' limits. Locally a query takes ~4–5 ms (miniflare). Deployed, p50 was about 110 ms from a laptop to the remote D1, which includes the network round trip and is not a server-side figure.
 
 ## What was checked
 
@@ -112,8 +112,8 @@ Both found real bugs in the first draft: an R\*Tree `id` can't repeat, and boxes
 
 ## Not verified, and limits
 
-- **The deploy path.** The Worker bundle was dry-run (`wrangler deploy --dry-run`: 1,023 KiB, 371 KiB gzipped, D1 binding recognised) and the workflows were written from Cloudflare's docs, but nothing has run on Workers Builds or against a real account. In particular the docs don't say whether the Workers Builds image has a Rust toolchain; if `npm run build` fails there on `rustup` or `cargo`, that is why. The `ci` and `load index` workflows are checked only by GitHub running them.
-- **Remote D1 and R\*Tree.** Everything ran on local D1 (workerd 1.20261119). workerd enabled R\*Tree on 2026-07-17, so older wrangler/workerd refuses `CREATE VIRTUAL TABLE … rtree` with `SQLITE_AUTH`. Cloudflare's D1 page lists only FTS5, JSON and math as supported extensions, though its 2026-11-12 changelog mentions R\*Tree. Nobody has run this against a remote D1; do that first. If it is refused, bbox falls back to four indexed numeric columns, which is fine at this size.
+- **Workers Builds.** Not connected yet, so `npm run build` has not run on its image; the docs don't say whether that image has a Rust toolchain. If the build fails there on `rustup` or `cargo`, that is why. The `load index` workflow has only been run without secrets, where it skips itself.
+- **Remote D1 and R\*Tree: verified.** The migration (R\*Tree with the `+cid` auxiliary column, and FTS5) applied to a real remote D1, and the 2.86 MB load file went in in about 2 seconds. Local D1 is the stricter one: workerd only enabled R\*Tree on 2026-07-17, so an older wrangler refuses `CREATE VIRTUAL TABLE … rtree` with `SQLITE_AUTH`. Cloudflare's D1 page still lists only FTS5, JSON and math as supported extensions, so treat R\*Tree as working but undocumented.
 - **Spatial literals other than a bbox are compared by their envelope.** A collection's geometry is its bboxes, so a rectangle is exact; a polygon can over-match, never under-match. For that reason `S_INTERSECTS` works but the spatial conformance classes are not claimed. Likewise the `T_` and `A_` functions work but aren't claimed as full classes.
 - **Dirty extents in the catalog.** Overshoot is clamped. A few global products have west slightly greater than east (`-179.9375` / `-179.979`); by STAC's rule that is a box crossing the antimeridian, i.e. nearly the whole globe, and it is indexed that way.
 - Entries with no known bbox are invisible to `bbox` and `S_INTERSECTS`. Unbounded datetimes (`null`) match any `datetime`, as STAC defines it.
