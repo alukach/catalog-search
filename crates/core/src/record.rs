@@ -170,10 +170,20 @@ fn doc(
     m.insert("links".into(), links(v, id));
 
     // Heavy and optional last, so they can be dropped without touching the rest.
-    for k in ["summaries", "assets"] {
-        if let Some(x) = v.get(k).filter(|x| !x.is_null()) {
-            m.insert(k.into(), x.clone());
+    // A summary must be an array, range or schema; a bare scalar (`item_count`) is invalid.
+    // The count moves to the top level instead of being lost.
+    if let Some(n) = v.pointer("/summaries/item_count").filter(|n| n.is_number()) {
+        m.insert("item_count".into(), n.clone());
+    }
+    if let Some(sm) = v.get("summaries").and_then(Value::as_object) {
+        let ok: Map<String, Value> =
+            sm.iter().filter(|(_, x)| x.is_array() || x.is_object()).map(|(k, x)| (k.clone(), x.clone())).collect();
+        if !ok.is_empty() {
+            m.insert("summaries".into(), Value::Object(ok));
         }
+    }
+    if let Some(x) = v.get("assets").filter(|x| !x.is_null()) {
+        m.insert("assets".into(), x.clone());
     }
     let mut out = Value::Object(m.clone()).to_string();
     for k in ["summaries", "assets"] {
@@ -277,6 +287,13 @@ mod tests {
         let d: Value = serde_json::from_str(&r.doc).unwrap();
         assert_eq!(d["extent"]["spatial"]["bbox"], json!([[-180, -90, 180, 90]]));
         assert_eq!(d["extent"]["temporal"]["interval"], json!([["2018-12-23T19:12:50Z", null]]));
+    }
+
+    #[test]
+    fn scalar_summaries_are_dropped() {
+        let r = from_entry(&entry(json!({"summaries": {"item_count": 5, "x": ["a"]}}))).unwrap();
+        let d: Value = serde_json::from_str(&r.doc).unwrap();
+        assert_eq!((d["item_count"].as_i64(), &d["summaries"]), (Some(5), &json!({"x": ["a"]})));
     }
 
     #[test]
